@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大尺寸图片导航系统 - 完整显示版</title>
+    <style>
+        /* 基础样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            overflow-x: hidden;
+        }
+        
+        /* 顶部控制栏 */
+        .top-controls {
+            background-color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .title {
+            font-size: 1.5rem;
+            color: #2c3e50;
+            font-weight: bold;
+        }
+        
+        /* 按钮样式 */
+        .btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+        }
+        
+        /* 主容器 - 关键修改：允许全屏滚动 */
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+        }
+        
+        /* 图片查看器 - 关键修改：全屏滚动 */
+        .image-viewer {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+            background-color: #2c3e50;
+        }
+        
+        /* 图片容器 - 关键修改：不限制尺寸 */
+        .image-container {
+            position: relative;
+            display: inline-block;
+            min-width: 100%;
+            min-height: 100%;
+        }
+        
+        /* 图片本身 - 关键修改：保持原始尺寸 */
+        #mainImage {
+            display: block;
+            max-width: none; /* 取消最大宽度限制 */
+            height: auto; /* 保持原始高度比例 */
+            cursor: crosshair;
+        }
+        
+        /* 高亮区域 */
+        .highlight-area {
+            position: absolute;
+            border: 2px solid #e74c3c;
+            background-color: rgba(231, 76, 60, 0.2);
+            pointer-events: auto;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+        
+        .highlight-area:hover {
+            background-color: rgba(231, 76, 60, 0.4);
+            border-width: 3px;
+            z-index: 20;
+        }
+        
+        .area-label {
+            position: absolute;
+            background-color: #e74c3c;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        
+        .highlight-area:hover .area-label {
+            opacity: 1;
+        }
+        
+        /* 缩放控制 */
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 800;
+        }
+        
+        .zoom-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: white;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+        }
+        
+        .zoom-btn:hover {
+            transform: scale(1.1);
+            background-color: #f8f9fa;
+        }
+        
+        /* 加载状态 */
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 20px;
+            z-index: 9999;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* 响应式调整 */
+        @media (max-width: 1200px) {
+            .zoom-controls {
+                bottom: 10px;
+                right: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 加载状态 -->
+    <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <div id="loadingText">正在加载图片和区域数据...</div>
+    </div>
+    
+    <div class="main-container">
+        <!-- 顶部控制栏 -->
+        <div class="top-controls">
+            <div class="title">大尺寸图片导航系统 (6345×12043像素)</div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn" onclick="toggleHighlights()">
+                    <span>🔍</span> 显示/隐藏区域
+                </button>
+                <button class="btn" onclick="toggleCoordinates()">
+                    <span>📐</span> 坐标模式
+                </button>
+                <button class="btn" onclick="resetView()">
+                    <span>🔄</span> 重置视图
+                </button>
+                <button class="btn" onclick="showInfo()">
+                    <span>ℹ️</span> 图片信息
+                </button>
+            </div>
+        </div>
+        
+        <!-- 图片查看器 -->
+        <div class="image-viewer" id="imageViewer">
+            <div class="image-container" id="imageContainer">
+                <!-- 图片将在这里加载 -->
+                <img src="zzk.png" alt="导航图片" id="mainImage">
+                <!-- 高亮区域将在这里动态创建 -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- 缩放控制 -->
+    <div class="zoom-controls">
+        <div class="zoom-btn" onclick="zoomIn()">+</div>
+        <div class="zoom-btn" onclick="zoomOut()">-</div>
+        <div class="zoom-btn" onclick="resetZoom()">↺</div>
+        <div class="zoom-btn" onclick="fitToScreen()">⤢</div>
+    </div>
+
+    <script>
+        // ============================
+        // 1. 全局变量和配置
+        // ============================
+        
+        // 原始图片尺寸
+        const ORIGINAL_WIDTH = 6345;
+        const ORIGINAL_HEIGHT = 12043;
+        
+        // 23个区域的原始坐标数据
+        const AREAS = [
+            // 区域1 - 多边形
+            { id: 1, name: "区域一", type: "poly", coords: [5, 813, 856, 572, 1097, 1412, 229, 1653], link: "menu1.html" },
+            // 区域2 - 多边形
+            { id: 2, name: "区域二", type: "poly", coords: [-6, 1709, 6311, -5, 6328, 684, 11, 2398], link: "menu2.html" },
+            // 区域3 - 多边形
+            { id: 3, name: "区域三", type: "poly", coords: [912, 2157, 1271, 3473, 4771, 2521, 4424, 1210], link: "menu3.html" },
+            // 区域4 - 多边形
+            { id: 4, name: "区域四", type: "poly", coords: [4664, 1250, 5807, 908, 5964, 1362, 4799, 1709], link: "menu4.html" },
+            // 区域5 - 圆形
+            { id: 5, name: "区域五", type: "circle", coords: [447, 2930, 289], link: "menu5.html" },
+            // 区域6 - 多边形
+            { id: 6, name: "区域六", type: "poly", coords: [44, 3916, 341, 3821, 369, 3933, 61, 4028], link: "menu6.html" },
+            // 区域7 - 矩形
+            { id: 7, name: "区域七", type: "rect", coords: [117, 4678, 4160, 5792], link: "menu7.html" },
+            // 区域8 - 矩形
+            { id: 8, name: "区域八", type: "rect", coords: [4267, 4678, 6221, 5781], link: "menu8.html" },
+            // 区域9 - 矩形
+            { id: 9, name: "区域九", type: "rect", coords: [123, 5910, 2072, 7008], link: "menu9.html" },
+            // 区域10 - 矩形
+            { id: 10, name: "区域十", type: "rect", coords: [2184, 5921, 4149, 7014], link: "menu10.html" },
+            // 区域11 - 矩形
+            { id: 11, name: "区域十一", type: "rect", coords: [4261, 5912, 6216, 7004], link: "menu11.html" },
+            // 区域12 - 矩形
+            { id: 12, name: "区域十二", type: "rect", coords: [100, 7111, 2066, 8220], link: "menu12.html" },
+            // 区域13 - 矩形
+            { id: 13, name: "区域十三", type: "rect", coords: [2189, 7128, 4149, 8214], link: "menu13.html" },
+            // 区域14 - 矩形
+            { id: 14, name: "区域十四", type: "rect", coords: [4289, 7150, 6221, 8197], link: "menu14.html" },
+            // 区域15 - 矩形
+            { id: 15, name: "区域十五", type: "rect", coords: [117, 8349, 2066, 9441], link: "menu15.html" },
+            // 区域16 - 矩形
+            { id: 16, name: "区域十六", type: "rect", coords: [2200, 8343, 4149, 9418], link: "menu16.html" },
+            // 区域17 - 矩形
+            { id: 17, name: "区域十七", type: "rect", coords: [4261, 8360, 6227, 9441], link: "menu17.html" },
+            // 区域18 - 矩形
+            { id: 18, name: "区域十八", type: "rect", coords: [106, 9564, 2077, 10673], link: "menu18.html" },
+            // 区域19 - 矩形
+            { id: 19, name: "区域十九", type: "rect", coords: [2156, 9553, 4144, 10662], link: "menu19.html" },
+            // 区域20 - 矩形
+            { id: 20, name: "区域二十", type: "rect", coords: [4261, 9519, 6227, 10712], link: "menu20.html" },
+            // 区域21 - 矩形
+            { id: 21, name: "区域二十一", type: "rect", coords: [111, 10785, 2055, 11877], link: "menu21.html" },
+            // 区域22 - 矩形
+            { id: 22, name: "区域二十二", type: "rect", coords: [2189, 10796, 4138, 11883], link: "menu22.html" },
+            // 区域23 - 矩形
+            { id: 23, name: "区域二十三", type: "rect", coords: [4278, 10796, 6216, 11883], link: "menu23.html" }
+        ];
+        
+        // 全局变量
+        let scaleFactor = 1; // 缩放因子
+        let isHighlightsVisible = true; // 高亮是否可见
+        let isCoordinateMode = false; // 坐标模式
+        let currentZoom = 1; // 当前缩放级别
+        let currentAreaId = null; // 当前选中的区域
+        
+        // ============================
+        // 2. 页面初始化
+        // ============================
+        
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('页面初始化...');
+            console.log('原始图片尺寸:', ORIGINAL_WIDTH, 'x', ORIGINAL_HEIGHT);
+            console.log('区域总数:', AREAS.length);
+            
+            // 加载图片
+            loadImage();
+        });
+        
+        // ============================
+        // 3. 图片加载和区域创建
+        // ============================
+        
+        function loadImage() {
+            const img = document.getElementById('mainImage');
+            const loader = document.getElementById('loader');
+            const loadingText = document.getElementById('loadingText');
+            
+            // 图片加载成功
+            img.onload = function() {
+                console.log('图片加载成功!');
+                console.log('实际显示尺寸:', img.naturalWidth, 'x', img.naturalHeight);
+                
+                // 计算缩放因子
+                scaleFactor = 1; // 我们保持原始坐标，不缩放
+                
+                // 创建高亮区域
+                createHighlightAreas();
+                
+                // 初始化图片位置
+                initializeImagePosition();
+                
+                // 隐藏加载动画
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                    loadingText.textContent = '加载完成!';
+                }, 500);
+                
+                // 添加图片点击事件
+                img.addEventListener('click', handleImageClick);
+            };
+            
+            // 图片加载失败
+            img.onerror = function() {
+                console.error('图片加载失败:', img.src);
+                loadingText.textContent = '图片加载失败!';
+                loadingText.style.color = '#e74c3c';
+                
+                // 显示错误信息
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                    alert('图片加载失败! 请检查:\n1. 图片文件名是否为 zzk.png\n2. 图片文件是否与HTML在同一目录\n3. 图片文件是否已损坏');
+                }, 1000);
+            };
+            
+            // 图片加载中
+            loadingText.textContent = '正在加载大尺寸图片 (218.6MB)...';
+        }
+        
+        // ============================
+        // 4. 高亮区域创建
+        // ============================
+        
+        function createHighlightAreas() {
+            const container = document.getElementById('imageContainer');
+            
+            // 移除旧的高亮区域
+            document.querySelectorAll('.highlight-area').forEach(el => el.remove());
+            
+            // 为每个区域创建高亮
+            AREAS.forEach(area => {
+                const highlight = createAreaHighlight(area);
+                if (highlight) {
+                    container.appendChild(highlight);
+                }
+            });
+            
+            console.log('高亮区域创建完成，共', AREAS.length, '个区域');
+        }
+        
+        // 创建单个区域高亮
+        function createAreaHighlight(area) {
+            const highlight = document.createElement('div');
+            highlight.className = 'highlight-area';
+            highlight.dataset.areaId = area.id;
+            highlight.title = `点击跳转到: ${area.link}`;
+            
+            // 设置区域样式
+            setAreaStyle(highlight, area);
+            
+            // 创建区域标签
+            const label = document.createElement('div');
+            label.className = 'area-label';
+            label.textContent = area.name;
+            highlight.appendChild(label);
+            
+            // 添加点击事件
+            highlight.addEventListener('click', function(e) {
+                e.stopPropagation();
+                selectArea(area.id);
+                navigateToArea(area.id);
+            });
+            
+            // 添加鼠标事件
+            highlight.addEventListener('mouseenter', function() {
+                this.style.zIndex = '100';
+            });
+            
+            highlight.addEventListener('mouseleave', function() {
+                if (currentAreaId !== area.id) {
+                    this.style.zIndex = '10';
+                }
+            });
+            
+            return highlight;
+        }
+        
+        // 设置区域样式
+        function setAreaStyle(element, area) {
+            if (area.type === 'rect') {
+                // 矩形区域: [x1, y1, x2, y2]
+                const [x1, y1, x2, y2] = area.coords;
+                element.style.left = Math.min(x1, x2) + 'px';
+                element.style.top = Math.min(y1, y2) + 'px';
+                element.style.width = Math.abs(x2 - x1) + 'px';
+                element.style.height = Math.abs(y2 - y1) + 'px';
+                element.style.borderRadius = '0';
+                
+            } else if (area.type === 'circle') {
+                // 圆形区域: [cx, cy, r]
+                const [cx, cy, r] = area.coords;
+                element.style.left = (cx - r) + 'px';
+                element.style.top = (cy - r) + 'px';
+                element.style.width = (r * 2) + 'px';
+                element.style.height = (r * 2) + 'px';
+                element.style.borderRadius = '50%';
+                
+            } else if (area.type === 'poly') {
+                // 多边形区域: [x1, y1, x2, y2, ...]
+                // 计算多边形的边界框
+                const xs = [];
+                const ys = [];
+                for (let i = 0; i < area.coords.length; i += 2) {
+                    xs.push(area.coords[i]);
+                    ys.push(area.coords[i + 1]);
+                }
+                
+                const minX = Math.min(...xs);
+                const maxX = Math.max(...xs);
+                const minY = Math.min(...ys);
+                const maxY = Math.max(...ys);
+                
+                element.style.left = minX + 'px';
+                element.style.top = minY + 'px';
+                element.style.width = (maxX - minX) + 'px';
+                element.style.height = (maxY - minY) + 'px';
+                element.style.borderRadius = '0';
+                
+                // 创建多边形裁剪路径
+                const clipPoints = [];
+                for (let i = 0; i < area.coords.length; i += 2) {
+                    const x = area.coords[i] - minX;
+                    const y = area.coords[i + 1] - minY;
+                    clipPoints.push(`${x}px ${y}px`);
+                }
+                
+                element.style.clipPath = `polygon(${clipPoints.join(', ')})`;
+            }
+        }
+        
+        // ============================
+        // 5. 区域选择和导航
+        // ============================
+        
+        function selectArea(areaId) {
+            // 移除之前选中的区域的高亮
+            if (currentAreaId !== null) {
+                const prevHighlight = document.querySelector(`.highlight-area[data-area-id="${currentAreaId}"]`);
+                
+                if (prevHighlight) {
+                    prevHighlight.style.backgroundColor = 'rgba(231, 76, 60, 0.2)';
+                    prevHighlight.style.borderColor = '#e74c3c';
+                }
+            }
+            
+            // 添加新选中区域的高亮
+            const highlight = document.querySelector(`.highlight-area[data-area-id="${areaId}"]`);
+            
+            if (highlight) {
+                highlight.style.backgroundColor = 'rgba(52, 152, 219, 0.4)';
+                highlight.style.borderColor = '#3498db';
+                highlight.style.zIndex = '100';
+                
+                // 滚动到区域位置
+                const viewer = document.getElementById('imageViewer');
+                const rect = highlight.getBoundingClientRect();
+                const viewerRect = viewer.getBoundingClientRect();
+                
+                viewer.scrollTo({
+                    left: viewer.scrollLeft + rect.left - viewerRect.width / 2 + rect.width / 2,
+                    top: viewer.scrollTop + rect.top - viewerRect.height / 2 + rect.height / 2,
+                    behavior: 'smooth'
+                });
+            }
+            
+            // 更新当前选中区域
+            currentAreaId = areaId;
+        }
+        
+        function navigateToArea(areaId) {
+            const area = AREAS.find(a => a.id === areaId);
+            if (!area) return;
+            
+            console.log(`准备跳转到: ${area.link}`);
+            
+            // 这里用alert模拟跳转，实际使用时取消下面的注释
+            const confirmJump = confirm(`确定要跳转到"${area.name}"的下级菜单吗？\n\n链接: ${area.link}`);
+            if (confirmJump) {
+                // 实际使用时取消下面的注释
+                // window.location.href = area.link;
+                alert(`即将跳转到 ${area.link}\n\n(实际使用时请取消代码中的跳转注释)`);
+            }
+        }
+        
+        // ============================
+        // 6. 图片点击事件处理
+        // ============================
+        
+        function handleImageClick(event) {
+            if (isCoordinateMode) {
+                // 坐标模式：获取点击坐标
+                getClickCoordinates(event);
+                return;
+            }
+            
+            const img = event.target;
+            const rect = img.getBoundingClientRect();
+            const scrollLeft = document.getElementById('imageViewer').scrollLeft;
+            const scrollTop = document.getElementById('imageViewer').scrollTop;
+            
+            // 计算点击位置相对于图片的绝对坐标
+            const clickX = event.clientX - rect.left + scrollLeft;
+            const clickY = event.clientY - rect.top + scrollTop;
+            
+            console.log('点击位置:', clickX, clickY);
+            
+            // 检查点击了哪个区域
+            for (const area of AREAS) {
+                if (isPointInArea(clickX, clickY, area)) {
+                    selectArea(area.id);
+                    navigateToArea(area.id);
+                    return;
+                }
+            }
+            
+            console.log('未点击到任何区域');
+        }
+        
+        // 判断点是否在区域内
+        function isPointInArea(x, y, area) {
+            if (area.type === 'rect') {
+                // 矩形区域
+                const [x1, y1, x2, y2] = area.coords;
+                const left = Math.min(x1, x2);
+                const right = Math.max(x1, x2);
+                const top = Math.min(y1, y2);
+                const bottom = Math.max(y1, y2);
+                
+                return x >= left && x <= right && y >= top && y <= bottom;
+                
+            } else if (area.type === 'circle') {
+                // 圆形区域
+                const [cx, cy, r] = area.coords;
+                const distance = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(y - cy, 2));
+                return distance <= r;
+                
+            } else if (area.type === 'poly') {
+                // 多边形区域 - 使用射线法
+                return isPointInPolygon(x, y, area.coords);
+            }
+            
+            return false;
+        }
+        
+        // 射线法判断点是否在多边形内
+        function isPointInPolygon(x, y, coords) {
+            let inside = false;
+            const numPoints = coords.length / 2;
+            
+            for (let i = 0, j = numPoints - 1; i < numPoints; j = i++) {
+                const xi = coords[i * 2];
+                const yi = coords[i * 2 + 1];
+                const xj = coords[j * 2];
+                const yj = coords[j * 2 + 1];
+                
+                const intersect = ((yi > y) !== (yj > y)) &&
+                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                
+                if (intersect) inside = !inside;
+            }
+            
+            return inside;
+        }
+        
+        // ============================
+        // 7. 工具函数
+        // ============================
+        
+        function toggleHighlights() {
+            isHighlightsVisible = !isHighlightsVisible;
+            const highlights = document.querySelectorAll('.highlight-area');
+            
+            if (isHighlightsVisible) {
+                highlights.forEach(h => h.style.display = 'block');
+                alert('区域高亮已显示');
+            } else {
+                highlights.forEach(h => h.style.display = 'none');
+                alert('区域高亮已隐藏');
+            }
+        }
+        
+        function toggleCoordinates() {
+            isCoordinateMode = !isCoordinateMode;
+            const img = document.getElementById('mainImage');
+            
+            if (isCoordinateMode) {
+                img.style.cursor = 'crosshair';
+                alert('坐标模式已开启\n点击图片任意位置可以获取坐标值\n再次点击"坐标模式"按钮退出');
+            } else {
+                img.style.cursor = 'default';
+            }
+        }
+        
+        function getClickCoordinates(event) {
+            const img = event.target;
+            const rect = img.getBoundingClientRect();
+            const scrollLeft = document.getElementById('imageViewer').scrollLeft;
+            const scrollTop = document.getElementById('imageViewer').scrollTop;
+            
+            // 计算点击位置相对于图片的绝对坐标
+            const x = Math.round(event.clientX - rect.left + scrollLeft);
+            const y = Math.round(event.clientY - rect.top + scrollTop);
+            
+            const message = `坐标信息：
+            绝对坐标: ${x}, ${y}
+            
+            完整坐标字符串: ${x},${y}`;
+            
+            alert(message);
+        }
+        
+        function resetView() {
+            const viewer = document.getElementById('imageViewer');
+            viewer.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+            
+            currentZoom = 1;
+            const img = document.getElementById('mainImage');
+            img.style.transform = 'scale(1)';
+            img.style.transformOrigin = '0 0';
+            
+            currentAreaId = null;
+            document.querySelectorAll('.highlight-area').forEach(h => {
+                h.style.backgroundColor = 'rgba(231, 76, 60, 0.2)';
+                h.style.borderColor = '#e74c3c';
+                h.style.zIndex = '10';
+            });
+            
+            alert('视图已重置');
+        }
+        
+        function showInfo() {
+            const info = `图片信息：
+            原始尺寸: 6345 × 12043 像素
+            文件大小: 218.6 MB
+            区域总数: 23个
+            多边形: 6个
+            矩形: 16个
+            圆形: 1个
+            
+            提示：建议压缩图片以改善加载速度`;
+            
+            alert(info);
+        }
+        
+        // ============================
+        // 8. 缩放功能
+        // ============================
+        
+        function zoomIn() {
+            currentZoom *= 1.2;
+            applyZoom();
+        }
+        
+        function zoomOut() {
+            currentZoom /= 1.2;
+            if (currentZoom < 0.1) currentZoom = 0.1;
+            applyZoom();
+        }
+        
+        function resetZoom() {
+            currentZoom = 1;
+            applyZoom();
+        }
+        
+        function fitToScreen() {
+            const viewer = document.getElementById('imageViewer');
+            const img = document.getElementById('mainImage');
+            
+            const viewerWidth = viewer.clientWidth;
+            const viewerHeight = viewer.clientHeight;
+            const imgWidth = img.naturalWidth;
+            const imgHeight = img.naturalHeight;
+            
+            const scaleX = viewerWidth / imgWidth;
+            const scaleY = viewerHeight / imgHeight;
+            currentZoom = Math.min(scaleX, scaleY);
+            
+            applyZoom();
+            
+            // 滚动到顶部
+            viewer.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+        }
+        
+        function applyZoom() {
+            const img = document.getElementById('mainImage');
+            img.style.transform = `scale(${currentZoom})`;
+            img.style.transformOrigin = '0 0';
+            
+            console.log('当前缩放级别:', currentZoom);
+        }
+        
+        // ============================
+        // 9. 初始化图片位置
+        // ============================
+        
+        function initializeImagePosition() {
+            // 图片默认显示在左上角，用户可以滚动查看
+            const viewer = document.getElementById('imageViewer');
+            viewer.scrollTo({ top: 0, left: 0 });
+        }
+        
+        // ============================
+        // 10. 页面加载完成后执行
+        // ============================
+        
+        console.log('大尺寸图片导航系统已初始化');
+    </script>
+</body>
+</html>
